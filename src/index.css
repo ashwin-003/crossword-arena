@@ -1,0 +1,174 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------- */
+/* CROSSWORD ARENA design tokens                                          */
+/* Dark, premium, competitive-esports palette. Single source of truth for */
+/* color/typography/spacing tokens consumed via Tailwind utility classes. */
+/* ---------------------------------------------------------------------- */
+@theme {
+  --font-display: 'Plus Jakarta Sans', 'Manrope', 'Inter', system-ui, sans-serif;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+  --font-heavy: 'Bowlby One SC', 'Plus Jakarta Sans', system-ui, sans-serif;
+
+  /* Surfaces */
+  --color-bg: #1b1e44;
+  --color-bg-elevated: #181a60;
+  --color-surface: #1e1f45;
+  --color-surface-hover: #262a5c;
+  --color-surface-raised: #23274f;
+  --color-border: #000000;
+  --color-border-strong: #000000;
+
+  /* Text */
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #dfeaf3;
+  --color-text-muted: #9aa3c9;
+
+  /* Brand accents */
+  --color-accent-purple: #604eea;
+  --color-accent-purple-dim: #5d3fdb;
+  --color-accent-cyan: #00c5e5;
+  --color-accent-cyan-dim: #0894a8;
+
+  /* Status */
+  --color-success: #52e46f;
+  --color-success-dim: #28b94a;
+  --color-warning: #fec600;
+  --color-warning-dim: #e9a900;
+  --color-danger: #e84b45;
+  --color-danger-dim: #b83232;
+
+  /* Sharp comic corners instead of soft rounded ones */
+  --radius-lg: 0.25rem;
+  --radius-xl: 0.25rem;
+  --radius-2xl: 0.375rem;
+
+  --shadow-glow-purple: 0 0 0 1px rgba(96, 78, 234, 0.4), 0 0 24px -4px rgba(96, 78, 234, 0.45);
+  --shadow-glow-cyan: 0 0 0 1px rgba(0, 197, 229, 0.35), 0 0 24px -4px rgba(0, 197, 229, 0.4);
+
+  --animate-fade-in-up: fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-fade-in: fade-in 0.3s ease-out both;
+  --animate-pulse-glow: pulse-glow 2.2s ease-in-out infinite;
+  --animate-count-tick: count-tick 0.18s ease-out;
+  --animate-shimmer: shimmer 2.5s linear infinite;
+
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes pulse-glow {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.55;
+    }
+  }
+  @keyframes count-tick {
+    from {
+      transform: scale(1.12);
+    }
+    to {
+      transform: scale(1);
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: -200% 0;
+    }
+    to {
+      background-position: 200% 0;
+    }
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    color-scheme: dark;
+  }
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background-color: var(--color-accent-purple);
+    color: white;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-bg);
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--color-border-strong);
+    border-radius: 999px;
+    border: 2px solid var(--color-bg);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent-cyan);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .bg-grid-pattern {
+    background-image:
+      linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 42px 42px;
+  }
+  .text-gradient-brand {
+    background: linear-gradient(90deg, var(--color-accent-purple), var(--color-accent-cyan));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .glass-panel {
+    background: rgba(16, 20, 31, 0.72);
+    backdrop-filter: blur(14px);
+  }
+  .text-outline {
+    -webkit-text-stroke: 1.5px rgba(5, 7, 13, 0.85);
+    text-stroke: 1.5px rgba(5, 7, 13, 0.85);
+    paint-order: stroke fill;
+    text-shadow: 2px 2px 0 rgba(5, 7, 13, 0.35);
+  }
+  .bg-halftone {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.09) 1.4px, transparent 1.4px);
+    background-size: 9px 9px;
+  }
+  .btn-chunky {
+    border-width: 2.5px;
+    border-radius: var(--radius-xl);
+    box-shadow: 4px 4px 0 0 #000000;
+    transition: transform 0.1s ease, box-shadow 0.1s ease;
+  }
+  .btn-chunky:active:not(:disabled) {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0 0 #000000;
+  }
+}
