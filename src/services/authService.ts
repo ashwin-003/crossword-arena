@@ -65,6 +65,68 @@ export async function loginPlayer(batchNumber: string): Promise<{ ok: true } | {
   return { ok: true }
 }
 
+export async function loginMentor(
+  identifier: string,
+  password?: string
+): Promise<{ ok: true } | { ok: false; error: ServiceError }> {
+  const trimmedId = identifier.trim()
+  const trimmedPass = (password ?? '').trim()
+
+  // Case 1: Standard email address
+  if (trimmedId.includes('@')) {
+    if (!trimmedPass) {
+      return { ok: false, error: { message: 'Password is required for email login.' } }
+    }
+    const { error } = await supabase.auth.signInWithPassword({
+      email: trimmedId,
+      password: trimmedPass,
+    })
+    if (error) {
+      const message = error.message.toLowerCase().includes('invalid')
+        ? 'Invalid mentor email or password.'
+        : 'Unable to log in right now. Please try again.'
+      return { ok: false, error: { message } }
+    }
+    return { ok: true }
+  }
+
+  // Case 2: 6-digit Mentor ID
+  if (/^\d{6}$/.test(trimmedId)) {
+    if (trimmedPass) {
+      const email = batchNumberToSyntheticEmail(trimmedId)
+      const { error: customPassErr } = await supabase.auth.signInWithPassword({
+        email,
+        password: trimmedPass,
+      })
+      if (!customPassErr) {
+        try {
+          localStorage.setItem('ca_last_batch_number', trimmedId)
+        } catch {
+          // ignore
+        }
+        return { ok: true }
+      }
+    }
+
+    // Fall back to standard ID derivation
+    return loginPlayer(trimmedId)
+  }
+
+  // Case 3: Other username/identifier with password
+  if (trimmedPass) {
+    const syntheticEmail = `${trimmedId.toLowerCase()}@players.crossword-arena.internal`
+    const { error } = await supabase.auth.signInWithPassword({
+      email: syntheticEmail,
+      password: trimmedPass,
+    })
+    if (!error) {
+      return { ok: true }
+    }
+  }
+
+  return { ok: false, error: { message: 'Enter a valid 6-digit Mentor ID or Email address.' } }
+}
+
 export async function reauthenticateSilently(): Promise<boolean> {
   const lastBatch = getLastBatchNumber()
   if (!lastBatch) return false
