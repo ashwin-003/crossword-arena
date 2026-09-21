@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Shield, GraduationCap, ArrowRight, ArrowLeft } from 'lucide-react'
-import { Logo } from '@/components/layout/Logo'
+import { LogoMark } from '@/components/layout/Logo'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody } from '@/components/ui/Card'
@@ -98,9 +98,14 @@ export default function LoginPage() {
       <div className="pointer-events-none absolute inset-0 -z-10 bg-[linear-gradient(135deg,#1b1e44_0%,#5d3fdb_28%,#604eea_48%,#5386ef_68%,#1b1e44_100%)] opacity-90" />
       <div className="pointer-events-none absolute -left-12 top-28 -z-10 h-40 w-40 rotate-12 bg-halftone opacity-20" />
       <div className="pointer-events-none absolute -right-12 bottom-28 -z-10 h-48 w-48 -rotate-12 bg-halftone opacity-20" />
-      <div className="w-full max-w-sm animate-fade-in-up">
-        <div className="mb-8 flex justify-center">
-          <Logo />
+      <div className="w-full max-w-md animate-fade-in-up">
+        <div className="mb-8 flex flex-col items-center text-center">
+          <div className="mb-3 flex justify-center">
+            <LogoMark className="h-12 w-12 sm:h-14 sm:w-14 drop-shadow-[0_0_24px_rgba(96,78,234,0.5)]" />
+          </div>
+          <h1 className="font-heavy text-4xl uppercase leading-[1.05] tracking-tight text-outline text-text-primary sm:text-5xl">
+            Crossword<span className="block text-gradient-brand">Arena</span>
+          </h1>
         </div>
         <Card>
           <CardBody>
