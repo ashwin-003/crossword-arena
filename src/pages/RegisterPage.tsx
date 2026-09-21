@@ -1,10 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Logo } from '@/components/layout/Logo'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody } from '@/components/ui/Card'
-import { registerPlayer, loginPlayer, logoutPlayer } from '@/services/authService'
+import { registerPlayer, loginPlayer } from '@/services/authService'
 import { validateRegisterInput, type RegisterValidationError } from '@/lib/auth'
 import { useToast } from '@/contexts/ToastContext'
 
@@ -20,11 +20,6 @@ export default function RegisterPage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [isAlreadyRegistered, setIsAlreadyRegistered] = useState(false)
   const [loading, setLoading] = useState(false)
-
-  // Clear any existing stale session so new registration is completely clean
-  useEffect(() => {
-    logoutPlayer().catch(() => {})
-  }, [])
 
   function errorFor(field: RegisterValidationError['field']) {
     return fieldErrors.find((e) => e.field === field)?.message

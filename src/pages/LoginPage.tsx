@@ -1,10 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Logo } from '@/components/layout/Logo'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody } from '@/components/ui/Card'
-import { loginPlayer, logoutPlayer } from '@/services/authService'
+import { loginPlayer } from '@/services/authService'
 import { supabase } from '@/lib/supabaseClient'
 import { formatGameCodeInput } from '@/utils/gameCode'
 
@@ -17,10 +17,7 @@ export default function LoginPage() {
   const [unregisteredBatch, setUnregisteredBatch] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  // Clear any existing stale session so switching between accounts never conflicts
-  useEffect(() => {
-    logoutPlayer().catch(() => {})
-  }, [])
+  // Note: We do not log out on mount so opening /login in another tab or checking it does not kill an active match session.
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()

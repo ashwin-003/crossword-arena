@@ -35,6 +35,14 @@ export async function registerPlayer(input: RegisterInput): Promise<{ ok: true }
   return { ok: true }
 }
 
+export function getLastBatchNumber(): string | null {
+  try {
+    return localStorage.getItem('ca_last_batch_number')
+  } catch {
+    return null
+  }
+}
+
 export async function loginPlayer(batchNumber: string): Promise<{ ok: true } | { ok: false; error: ServiceError }> {
   const trimmed = batchNumber.trim()
   const email = batchNumberToSyntheticEmail(trimmed)
@@ -48,9 +56,27 @@ export async function loginPlayer(batchNumber: string): Promise<{ ok: true } | {
     return { ok: false, error: { message } }
   }
 
+  try {
+    localStorage.setItem('ca_last_batch_number', trimmed)
+  } catch {
+    // ignore storage unavailability
+  }
+
   return { ok: true }
 }
 
+export async function reauthenticateSilently(): Promise<boolean> {
+  const lastBatch = getLastBatchNumber()
+  if (!lastBatch) return false
+  const res = await loginPlayer(lastBatch)
+  return res.ok
+}
+
 export async function logoutPlayer(): Promise<void> {
+  try {
+    localStorage.removeItem('ca_last_batch_number')
+  } catch {
+    // ignore
+  }
   await supabase.auth.signOut()
 }

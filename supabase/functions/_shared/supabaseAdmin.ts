@@ -35,7 +35,25 @@ export function getCallerClient(req: Request): SupabaseClient {
 }
 
 export async function requireUser(req: Request) {
+  const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization') ?? ''
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim()
   const caller = getCallerClient(req)
+
+  if (token) {
+    try {
+      const admin = getAdminClient()
+      const {
+        data: { user },
+        error,
+      } = await admin.auth.getUser(token)
+      if (user && !error) {
+        return { user, caller }
+      }
+    } catch {
+      // fallback to caller client below
+    }
+  }
+
   const {
     data: { user },
     error,
