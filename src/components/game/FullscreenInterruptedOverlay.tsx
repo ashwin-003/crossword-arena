@@ -47,7 +47,7 @@ export function FullscreenInterruptedOverlay({
       </div>
       <div className="flex flex-col items-center gap-2">
         <h2 className="font-display text-xl font-extrabold uppercase tracking-wide text-warning">
-          Competition Mode Interrupted
+          Match Interrupted
         </h2>
         <p className="max-w-sm text-sm text-text-secondary">Return to fullscreen now. Your timer keeps running.</p>
         <p className="mt-1 font-mono text-3xl font-extrabold text-danger">{formatSeconds(graceSecondsLeft)}</p>

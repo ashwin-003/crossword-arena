@@ -35,9 +35,11 @@ function ClueList({
   onSelect: (clue: ClueEntry) => void
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-surface-raised/40 p-3 transition-colors duration-200 hover:border-white/20 hover:bg-white/[0.04]">
-      <h3 className="mb-2.5 font-display text-xs font-bold uppercase tracking-widest text-text-muted">{title}</h3>
-      <ul className="flex max-h-80 flex-col gap-1 overflow-y-auto pr-1">
+    <div className="rounded-xl border border-white/10 bg-surface-raised/40 p-4 transition-colors duration-200">
+      <h3 className="mb-3 border-b border-border pb-2 font-display text-sm font-bold uppercase tracking-widest text-accent-cyan">
+        {title}
+      </h3>
+      <ul className="flex flex-col gap-1 pr-1">
         {items.map((clue) => {
           const isActive = clue.id === currentClueId
           return (
@@ -47,12 +49,14 @@ function ClueList({
                 onClick={() => onSelect(clue)}
                 onContextMenu={(e) => e.preventDefault()}
                 className={clsx(
-                  'flex w-full select-none items-start gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors',
-                  isActive ? 'bg-accent-purple/20 text-text-primary' : 'text-text-secondary hover:bg-white/[0.06] hover:text-text-primary'
+                  'flex w-full select-none items-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
+                  isActive
+                    ? 'bg-accent-purple/25 text-text-primary ring-1 ring-accent-purple/50'
+                    : 'text-text-secondary hover:bg-white/[0.06] hover:text-text-primary'
                 )}
               >
-                <span className="mt-0.5 w-5 shrink-0 font-semibold text-text-muted">{clue.number}</span>
-                <span className="flex-1">{clue.clue}</span>
+                <span className="w-6 shrink-0 font-mono text-xs font-bold text-text-muted">{clue.number}.</span>
+                <span className="flex-1 leading-snug">{clue.clue}</span>
               </button>
             </li>
           )

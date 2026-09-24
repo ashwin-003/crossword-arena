@@ -1,38 +1,45 @@
 import { supabase } from '@/lib/supabaseClient'
-import { batchNumberToSyntheticEmail, batchNumberToDerivedPassword, type RegisterInput } from '@/lib/auth'
+import { batchNumberToSyntheticEmail, type RegisterInput } from '@/lib/auth'
 
 export interface ServiceError {
   message: string
 }
 
-export async function registerPlayer(input: RegisterInput): Promise<{ ok: true } | { ok: false; error: ServiceError }> {
-  const { data, error } = await supabase.functions.invoke<{ ok: boolean; userId: string }>('register', {
-    body: {
-      name: input.name.trim(),
-      className: input.className.trim(),
-      batchNumber: input.batchNumber.trim(),
-    },
-  })
+export interface StudentSession {
+  token: string
+  studentId: string
+  batchNumber: string
+  name: string
+}
 
-  if (error) {
-    let message = 'Unable to create your account. Please try again.'
-    const context = (error as { context?: Response }).context
-    if (context) {
-      try {
-        const body = await context.clone().json()
-        if (body?.error?.message) message = body.error.message
-      } catch {
-        // ignore — fall back to default message
-      }
+const STUDENT_SESSION_KEY = 'ca_student_session'
+
+export function getStudentSession(): StudentSession | null {
+  try {
+    const raw = localStorage.getItem(STUDENT_SESSION_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as StudentSession
+  } catch {
+    return null
+  }
+}
+
+export function setStudentSession(session: StudentSession | null) {
+  try {
+    if (session) {
+      localStorage.setItem(STUDENT_SESSION_KEY, JSON.stringify(session))
+      localStorage.setItem('ca_last_batch_number', session.batchNumber)
+      localStorage.setItem('ca_user_role', 'student')
+    } else {
+      localStorage.removeItem(STUDENT_SESSION_KEY)
     }
-    return { ok: false, error: { message } }
+  } catch {
+    // ignore storage unavailability
   }
+}
 
-  if (!data?.ok) {
-    return { ok: false, error: { message: 'Unable to create your account. Please try again.' } }
-  }
-
-  return { ok: true }
+export async function registerPlayer(_input: RegisterInput): Promise<{ ok: true } | { ok: false; error: ServiceError }> {
+  return { ok: false, error: { message: 'Registration is closed. Please log in with your batch number.' } }
 }
 
 export function getLastBatchNumber(): string | null {
@@ -43,26 +50,66 @@ export function getLastBatchNumber(): string | null {
   }
 }
 
-export async function loginPlayer(batchNumber: string): Promise<{ ok: true } | { ok: false; error: ServiceError }> {
-  const trimmed = batchNumber.trim()
-  const email = batchNumberToSyntheticEmail(trimmed)
-  const password = batchNumberToDerivedPassword(trimmed)
-  const { error } = await supabase.auth.signInWithPassword({ email, password })
+export function getUserRole(): 'student' | 'mentor' {
+  try {
+    const studentSession = getStudentSession()
+    if (studentSession) return 'student'
+    return (localStorage.getItem('ca_user_role') as 'mentor') === 'mentor' ? 'mentor' : 'student'
+  } catch {
+    return 'student'
+  }
+}
 
-  if (error) {
-    const message = error.message.toLowerCase().includes('invalid')
-      ? 'That batch number is not registered yet.'
-      : 'Unable to log in right now. Please try again.'
-    return { ok: false, error: { message } }
+/**
+ * Verifies student batch number securely through the student-login Edge Function.
+ * Students do NOT use Supabase Auth, passwords, or emails.
+ */
+export async function loginPlayer(batchNumber: string): Promise<{ ok: true; session?: StudentSession } | { ok: false; error: ServiceError }> {
+  const trimmed = batchNumber.trim()
+  if (!/^\d{6}$/.test(trimmed)) {
+    return { ok: false, error: { message: 'Invalid batch number' } }
   }
 
   try {
-    localStorage.setItem('ca_last_batch_number', trimmed)
-  } catch {
-    // ignore storage unavailability
-  }
+    const { data, error } = await supabase.functions.invoke<{
+      ok: boolean
+      session?: StudentSession
+      error?: { message: string }
+    }>('student-login', {
+      body: { batchNumber: trimmed },
+    })
 
-  return { ok: true }
+    if (error) {
+      let message = 'Invalid batch number'
+      const context = (error as { context?: Response }).context
+      if (context) {
+        try {
+          const body = await context.clone().json()
+          if (body?.error?.message) message = body.error.message
+        } catch {
+          // ignore
+        }
+      }
+      return { ok: false, error: { message } }
+    }
+
+    if (!data?.ok || !data.session) {
+      return { ok: false, error: { message: data?.error?.message ?? 'Invalid batch number' } }
+    }
+
+    // Save student session in localStorage
+    setStudentSession(data.session)
+
+    // Notify auth context listeners
+    window.dispatchEvent(new Event('ca_student_auth_change'))
+
+    return { ok: true, session: data.session }
+  } catch (err) {
+    return {
+      ok: false,
+      error: { message: err instanceof Error ? err.message : 'Unable to log in right now.' },
+    }
+  }
 }
 
 export async function loginMentor(
@@ -72,73 +119,71 @@ export async function loginMentor(
   const trimmedId = identifier.trim()
   const trimmedPass = (password ?? '').trim()
 
-  // Case 1: Standard email address
-  if (trimmedId.includes('@')) {
-    if (!trimmedPass) {
-      return { ok: false, error: { message: 'Password is required for email login.' } }
-    }
-    const { error } = await supabase.auth.signInWithPassword({
-      email: trimmedId,
-      password: trimmedPass,
-    })
-    if (error) {
-      const message = error.message.toLowerCase().includes('invalid')
-        ? 'Invalid mentor email or password.'
-        : 'Unable to log in right now. Please try again.'
-      return { ok: false, error: { message } }
-    }
-    return { ok: true }
+  if (!trimmedPass) {
+    return { ok: false, error: { message: 'Password is required for mentor login.' } }
   }
 
-  // Case 2: 6-digit Mentor ID
+  // Clear any existing student session
+  setStudentSession(null)
+
+  // Attempt login with provided email/identifier
+  let loginEmail = trimmedId
   if (/^\d{6}$/.test(trimmedId)) {
-    if (trimmedPass) {
-      const email = batchNumberToSyntheticEmail(trimmedId)
-      const { error: customPassErr } = await supabase.auth.signInWithPassword({
-        email,
-        password: trimmedPass,
-      })
-      if (!customPassErr) {
-        try {
-          localStorage.setItem('ca_last_batch_number', trimmedId)
-        } catch {
-          // ignore
-        }
-        return { ok: true }
-      }
-    }
-
-    // Fall back to standard ID derivation
-    return loginPlayer(trimmedId)
+    loginEmail = batchNumberToSyntheticEmail(trimmedId)
   }
 
-  // Case 3: Other username/identifier with password
-  if (trimmedPass) {
-    const syntheticEmail = `${trimmedId.toLowerCase()}@players.crossword-arena.internal`
-    const { error } = await supabase.auth.signInWithPassword({
-      email: syntheticEmail,
-      password: trimmedPass,
-    })
-    if (!error) {
-      return { ok: true }
-    }
+  const { data: authData, error } = await supabase.auth.signInWithPassword({
+    email: loginEmail,
+    password: trimmedPass,
+  })
+
+  if (error || !authData?.user) {
+    const message = error?.message.toLowerCase().includes('invalid')
+      ? 'Invalid mentor email or password.'
+      : 'Unable to log in right now. Please try again.'
+    return { ok: false, error: { message } }
   }
 
-  return { ok: false, error: { message: 'Enter a valid 6-digit Mentor ID or Email address.' } }
+  // Verify mentor exists in public.mentors and has is_active = true
+  const { data: mentor, error: mentorError } = await supabase
+    .from('mentors')
+    .select('id, is_active')
+    .eq('auth_user_id', authData.user.id)
+    .maybeSingle()
+
+  if (mentorError || !mentor) {
+    await supabase.auth.signOut().catch(() => {})
+    return { ok: false, error: { message: 'This account is not authorized as a mentor.' } }
+  }
+
+  if (!mentor.is_active) {
+    await supabase.auth.signOut().catch(() => {})
+    return { ok: false, error: { message: 'This mentor account is inactive.' } }
+  }
+
+  try {
+    localStorage.setItem('ca_user_role', 'mentor')
+  } catch {
+    // ignore
+  }
+
+  return { ok: true }
 }
 
 export async function reauthenticateSilently(): Promise<boolean> {
-  const lastBatch = getLastBatchNumber()
-  if (!lastBatch) return false
-  const res = await loginPlayer(lastBatch)
-  return res.ok
+  const studentSession = getStudentSession()
+  if (studentSession) return true
+  return false
 }
 
 export async function logoutPlayer(): Promise<void> {
   try {
+    setStudentSession(null)
     localStorage.removeItem('ca_last_batch_number')
+    localStorage.removeItem('ca_user_role')
   } catch {
     // ignore
   }
-  await supabase.auth.signOut()
+  window.dispatchEvent(new Event('ca_student_auth_change'))
+  await supabase.auth.signOut().catch(() => {})
 }

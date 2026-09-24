@@ -69,7 +69,7 @@ export default function GameHistoryDetailPage() {
             </div>
 
             <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-4">
-              <ResultStat label="Score" value={myResult.score.toLocaleString()} />
+              <ResultStat label="Marks" value={`${myResult.score} / ${myResult.total_questions}`} />
               <ResultStat label="Solved" value={`${myResult.solved_count}/${myResult.total_questions}`} />
               <ResultStat label="Accuracy" value={`${myResult.accuracy}%`} />
               <ResultStat label="Time" value={formatDuration(myResult.completion_time_seconds)} />
@@ -89,14 +89,14 @@ export default function GameHistoryDetailPage() {
                     <span className="flex-1 truncate font-medium text-text-primary">
                       {r.user_id === profile?.id ? 'You' : r.user.name}
                     </span>
-                    <span className="font-mono font-bold text-text-primary">{r.score.toLocaleString()}</span>
+                    <span className="font-mono font-bold text-text-primary">{r.score} Marks</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            <LinkButton to="/lobby" fullWidth>
-              Back to Lobby
+            <LinkButton to="/history" fullWidth>
+              Back to History
             </LinkButton>
           </CardBody>
         </Card>

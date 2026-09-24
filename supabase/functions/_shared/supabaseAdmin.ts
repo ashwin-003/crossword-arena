@@ -34,14 +34,54 @@ export function getCallerClient(req: Request): SupabaseClient {
   })
 }
 
-export async function requireUser(req: Request) {
+export interface AuthUser {
+  id: string
+  role?: string
+  batchNumber?: string
+  email?: string
+}
+
+export async function requireUser(req: Request): Promise<{ user: AuthUser | null; caller: SupabaseClient }> {
   const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization') ?? ''
   const token = authHeader.replace(/^Bearer\s+/i, '').trim()
   const caller = getCallerClient(req)
+  const admin = getAdminClient()
 
   if (token) {
+    // 1. Check if token is a Student Session Token
+    if (token.startsWith('st_')) {
+      try {
+        const { data: sessionRow, error: sessionErr } = await admin
+          .from('student_sessions')
+          .select('id, batch_number')
+          .eq('token', token)
+          .maybeSingle()
+
+        if (!sessionErr && sessionRow) {
+          // Update last_seen_at asynchronously
+          admin
+            .from('student_sessions')
+            .update({ last_seen_at: new Date().toISOString() })
+            .eq('id', sessionRow.id)
+            .then(() => {})
+            .catch(() => {})
+
+          return {
+            user: {
+              id: sessionRow.id,
+              role: 'student',
+              batchNumber: sessionRow.batch_number,
+            },
+            caller,
+          }
+        }
+      } catch (err) {
+        console.warn('Error verifying student session token:', err)
+      }
+    }
+
+    // 2. Otherwise verify as Supabase Auth user (e.g. Mentor)
     try {
-      const admin = getAdminClient()
       const {
         data: { user },
         error,

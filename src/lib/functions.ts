@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient'
-import { reauthenticateSilently } from '@/services/authService'
+import { getStudentSession, reauthenticateSilently } from '@/services/authService'
 
 export interface FunctionResult<T> {
   ok: boolean
@@ -9,6 +9,13 @@ export interface FunctionResult<T> {
 
 async function getValidAccessToken(): Promise<string | null> {
   try {
+    // 1. If student session is active, use student session token
+    const studentSession = getStudentSession()
+    if (studentSession?.token) {
+      return studentSession.token
+    }
+
+    // 2. Otherwise use Supabase Auth session token (e.g. mentor)
     let {
       data: { session },
     } = await supabase.auth.getSession()
@@ -21,13 +28,6 @@ async function getValidAccessToken(): Promise<string | null> {
       const refreshed = await supabase.auth.refreshSession()
       if (refreshed.data.session) {
         session = refreshed.data.session
-      } else {
-        // Attempt silent reauth via stored batch number
-        const reauthed = await reauthenticateSilently()
-        if (reauthed) {
-          const fresh = await supabase.auth.getSession()
-          session = fresh.data.session
-        }
       }
     }
 
@@ -40,10 +40,9 @@ async function getValidAccessToken(): Promise<string | null> {
 
 /**
  * Wrapper around supabase.functions.invoke that:
- * 1. Ensures the caller has a valid, fresh access token (refreshing or auto-reauthenticating if needed).
+ * 1. Ensures the caller has a valid access token (student session token or mentor auth token).
  * 2. Explicitly injects Authorization: Bearer <token>.
- * 3. Automatically retries once if a 401 / Authentication required is encountered.
- * 4. Unwraps Edge Function error responses into friendly error messages.
+ * 3. Unwraps Edge Function error responses into friendly error messages.
  */
 export async function callFunction<TResponse = unknown, TBody extends Record<string, unknown> = Record<string, unknown>>(
   name: string,
@@ -57,14 +56,14 @@ export async function callFunction<TResponse = unknown, TBody extends Record<str
 
   let { data, error } = await supabase.functions.invoke<TResponse>(name, { body, headers })
 
-  // If 401 / Authentication error occurred, attempt session recovery and retry once
+  // If 401 / Authentication error occurred on mentor auth, attempt session recovery and retry once
   const context = (error as { context?: Response })?.context
   const isAuthError =
     context?.status === 401 ||
     error?.message?.toLowerCase().includes('auth') ||
     error?.message?.toLowerCase().includes('jwt')
 
-  if (error && isAuthError) {
+  if (error && isAuthError && !getStudentSession()) {
     console.warn(`[callFunction] Got 401 on ${name}, attempting session recovery…`)
     const refreshed = await supabase.auth.refreshSession().catch(() => null)
     let freshToken = refreshed?.data?.session?.access_token ?? null
@@ -92,16 +91,29 @@ export async function callFunction<TResponse = unknown, TBody extends Record<str
     if (errContext) {
       try {
         const parsed = await errContext.clone().json()
-        if (parsed?.error?.message) message = parsed.error.message
+        if (parsed?.error?.message) {
+          message = parsed.error.message
+        } else if (parsed?.message) {
+          message = parsed.message
+        }
       } catch {
-        // ignore parse failure, use default message
+        // ignore parse failure
       }
     } else if (error.message) {
       message = error.message
     }
+
+    // Friendly mappings for standard error states
+    if (message.includes('Invalid game code') || message.includes('Game not found')) {
+      message = 'Invalid game code'
+    } else if (message.includes('Authentication required') || message.includes('session')) {
+      message = 'Student session expired. Please log in again.'
+    } else if (message.includes('already started') || message.includes('ended') || message.includes('cancelled')) {
+      message = 'This game is no longer accepting participants.'
+    }
+
     return { ok: false, error: message }
   }
 
   return { ok: true, data: data as TResponse }
 }
-

@@ -104,7 +104,7 @@ export function useCrosswordPlay({
     if (!isWordComplete(gridSnapshot, clue) || !gameId) return
     const text = wordText(gridSnapshot, clue)
     flushSave(clue.id, text)
-    const { data } = await checkWordAnswer(gameId, clue.id, text)
+    const { data } = await checkWordAnswer(gameId, clue.id, text, userId)
     const row = Array.isArray(data) ? data[0] : data
     if (row && typeof row.is_correct === 'boolean') {
       setCorrectness((prev) => {

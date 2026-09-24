@@ -15,6 +15,7 @@ import { useRealtimeGame } from '@/hooks/useRealtimeGame'
 import { useGameParticipants } from '@/hooks/useGameParticipants'
 import { useClipboard } from '@/hooks/useClipboard'
 import { fetchGameByCode, joinGameByCode, startGame, cancelGame, leaveGame, disqualifyParticipant } from '@/services/gameService'
+import { getUserRole } from '@/services/authService'
 import type { ParticipantWithUser } from '@/types/database'
 
 export default function GameLobbyPage() {
@@ -58,6 +59,13 @@ export default function GameLobbyPage() {
         return
       }
 
+      // Mentors do NOT join games using Game Codes or participate as players
+      if (getUserRole() === 'mentor') {
+        setJoinError('Mentors cannot join games as participants.')
+        setJoinState('error')
+        return
+      }
+
       // Participants join as players
       const result = await joinGameByCode(gameCode)
       if (cancelled) return
@@ -87,6 +95,11 @@ export default function GameLobbyPage() {
       }
     } else {
       if (game.status === 'active') {
+        try {
+          if (typeof document.documentElement.requestFullscreen === 'function') {
+            document.documentElement.requestFullscreen().catch(() => {})
+          }
+        } catch {}
         navigate(`/game/${gameCode}/competition`, { replace: true })
       } else if (game.status === 'ended') {
         navigate(`/game/${gameCode}/results`, { replace: true })
@@ -112,7 +125,7 @@ export default function GameLobbyPage() {
         title: 'Removed from Match',
         description: 'You were removed from this match by the host.',
       })
-      navigate('/lobby', { replace: true })
+      navigate('/join-game', { replace: true })
     }
   }, [participants, profile?.id, isCreator, game?.status, showToast, navigate])
 
@@ -121,12 +134,13 @@ export default function GameLobbyPage() {
   }
 
   if (joinState === 'error') {
+    const fallbackPath = getUserRole() === 'mentor' ? '/mentor' : '/join-game'
     return (
       <PageShell className="flex items-center justify-center py-20">
         <div className="flex w-full max-w-md flex-col items-center gap-4">
-          <ErrorState title="Couldn't join this match" description={joinError ?? undefined} onRetry={() => navigate('/join-game')} />
-          <Button variant="ghost" size="sm" onClick={() => navigate('/lobby')}>
-            Back to Home
+          <ErrorState title="Couldn't join this match" description={joinError ?? undefined} onRetry={() => navigate(fallbackPath)} />
+          <Button variant="ghost" size="sm" onClick={() => navigate(fallbackPath)}>
+            {getUserRole() === 'mentor' ? 'Back to Dashboard' : 'Back to Join Game'}
           </Button>
         </div>
       </PageShell>
@@ -157,7 +171,7 @@ export default function GameLobbyPage() {
       return
     }
     showToast({ variant: 'info', title: 'Match cancelled' })
-    navigate('/lobby', { replace: true })
+    navigate(isCreator ? '/mentor' : '/join-game', { replace: true })
   }
 
   async function handleLeave() {
@@ -173,7 +187,7 @@ export default function GameLobbyPage() {
       return
     }
     showToast({ variant: 'success', title: 'You left the match' })
-    navigate('/lobby', { replace: true })
+    navigate('/join-game', { replace: true })
   }
 
   async function handleConfirmRemoveParticipant() {
@@ -194,18 +208,30 @@ export default function GameLobbyPage() {
     <PageShell className="flex justify-center py-10">
       <div className="w-full max-w-2xl animate-fade-in-up">
         <div className="mb-6 flex items-center justify-between">
-          <Badge tone="cyan" pulse>
-            Match Lobby
+          <Badge tone={isCreator ? 'cyan' : 'warning'} pulse>
+            {isCreator ? 'Match Lobby' : 'WAITING FOR MENTOR'}
           </Badge>
           <ConnectionStatusBadge status={connectionStatus} />
         </div>
 
         <Card>
           <CardHeader className="text-center">
-            <p className="font-display text-xs font-semibold uppercase tracking-widest text-text-muted">Match Ready</p>
+            <p className="font-display text-xs font-semibold uppercase tracking-widest text-text-muted">
+              {isCreator ? 'Match Ready' : 'Game'}
+            </p>
             <h1 className="mt-1 font-heavy text-2xl uppercase tracking-tight text-outline text-text-primary sm:text-3xl">
               {game?.title ?? '—'}
             </h1>
+            {!isCreator && (
+              <div className="mt-3 flex items-center justify-center gap-2">
+                <span className="font-display text-xs font-bold uppercase tracking-wider text-text-muted">
+                  Status:
+                </span>
+                <Badge tone="warning" pulse>
+                  WAITING TO START
+                </Badge>
+              </div>
+            )}
           </CardHeader>
           <CardBody className="flex flex-col items-center gap-6 py-8">
             <div className="flex flex-col items-center gap-2">
@@ -300,9 +326,12 @@ export default function GameLobbyPage() {
             ) : (
               <div className="flex w-full flex-col items-center gap-3">
                 <div className="flex items-center gap-2 text-text-secondary">
-                  <Loader2 size={15} className="animate-spin" />
-                  <span className="text-sm">Waiting for the match to start…</span>
+                  <Loader2 size={16} className="animate-spin text-accent-cyan" />
+                  <span className="text-sm font-medium text-text-primary">Waiting for mentor to start the match…</span>
                 </div>
+                <p className="text-center text-xs text-text-muted">
+                  You will automatically enter the crossword competition screen as soon as the mentor starts.
+                </p>
                 <Button
                   type="button"
                   variant="ghost"
@@ -310,7 +339,7 @@ export default function GameLobbyPage() {
                   onClick={() => setShowLeaveConfirm(true)}
                   disabled={leaving}
                   fullWidth
-                  className="text-danger hover:bg-danger/10"
+                  className="mt-1 text-danger hover:bg-danger/10"
                 >
                   <LogOut size={14} />
                   Leave Match

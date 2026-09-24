@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { playFanfare } from '@/lib/sound'
-import { Trophy, Users, Radio, ArrowLeft, BarChart3, Square, RotateCcw } from 'lucide-react'
+import { Trophy, Users, Radio, ArrowLeft, Square, RotateCcw } from 'lucide-react'
 import { Logo } from '@/components/layout/Logo'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -158,19 +158,22 @@ export default function SpectatorPage() {
               </Button>
             )}
 
-            {!isCreator && snapshot.status === 'ended' && (
-              <Button size="sm" onClick={() => navigate(`/game/${gameCode}/results`)}>
-                <BarChart3 size={14} />
-                Final Results
-              </Button>
+            {isCreator && (
+              <Link
+                to={`/game/${gameCode}/monitor`}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-accent-purple/50 bg-accent-purple/10 px-3 py-1.5 text-xs font-semibold text-accent-purple transition hover:bg-accent-purple/20"
+              >
+                <Users size={13} />
+                Student Monitor
+              </Link>
             )}
 
             <Link
-              to="/lobby"
+              to={isCreator ? '/mentor' : '/join-game'}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text-secondary transition hover:border-accent-cyan/50 hover:text-accent-cyan"
             >
               <ArrowLeft size={13} />
-              Lobby
+              {isCreator ? 'Dashboard' : 'Exit'}
             </Link>
           </div>
         </div>

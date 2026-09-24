@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
   const admin = getAdminClient()
 
   const { data: existing, error: existingError } = await admin
-    .from('users')
+    .from('students')
     .select('id')
     .eq('batch_number', batchNumber)
     .maybeSingle()
@@ -80,6 +80,15 @@ Deno.serve(async (req) => {
     const status = message.toLowerCase().includes('already') ? 409 : 500
     return errorResponse('Unable to create account.', status, message)
   }
+
+  // Insert profile into public.students
+  await admin.from('students').insert({
+    auth_user_id: created.user.id,
+    name,
+    class: className,
+    batch_number: batchNumber,
+    is_active: true,
+  })
 
   return jsonResponse({ ok: true, userId: created.user.id })
 })

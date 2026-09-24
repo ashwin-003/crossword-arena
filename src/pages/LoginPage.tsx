@@ -1,12 +1,11 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Shield, GraduationCap, ArrowRight, ArrowLeft } from 'lucide-react'
 import { LogoMark } from '@/components/layout/Logo'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Card, CardBody } from '@/components/ui/Card'
 import { loginPlayer, loginMentor } from '@/services/authService'
-import { supabase } from '@/lib/supabaseClient'
 import { formatGameCodeInput } from '@/utils/gameCode'
 
 type LoginMode = 'select' | 'mentor' | 'student'
@@ -20,7 +19,6 @@ export default function LoginPage() {
 
   // Student form state
   const [studentBatch, setStudentBatch] = useState(initialBatch)
-  const [unregisteredBatch, setUnregisteredBatch] = useState<string | null>(null)
 
   // Mentor form state
   const [mentorIdentifier, setMentorIdentifier] = useState('')
@@ -33,10 +31,9 @@ export default function LoginPage() {
   async function handleStudentSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
-    setUnregisteredBatch(null)
 
     if (!/^\d{6}$/.test(studentBatch)) {
-      setError('Enter your 6-digit batch number (e.g. 261012).')
+      setError('Enter your 6-digit batch number (e.g. 271001).')
       return
     }
 
@@ -45,29 +42,13 @@ export default function LoginPage() {
     setLoading(false)
 
     if (result.ok) {
-      const redirectTo = (location.state as { from?: string } | null)?.from ?? '/lobby'
+      const from = (location.state as { from?: string } | null)?.from
+      const redirectTo = from && from !== '/lobby' ? from : '/join-game'
       navigate(redirectTo, { replace: true })
       return
     }
 
-    const defaultError = 'error' in result ? result.error.message : 'Unable to log in right now.'
-    // Check whether this batch number exists in the database
-    try {
-      const { data: userRow } = await supabase
-        .from('users')
-        .select('id')
-        .eq('batch_number', studentBatch)
-        .maybeSingle()
-
-      if (!userRow) {
-        setUnregisteredBatch(studentBatch)
-        setError(`Batch number ${studentBatch} is not registered yet.`)
-        return
-      }
-    } catch {
-      // Fall back to general error
-    }
-
+    const defaultError = 'error' in result ? result.error.message : 'Invalid batch number'
     setError(defaultError)
   }
 
@@ -85,7 +66,7 @@ export default function LoginPage() {
     setLoading(false)
 
     if (result.ok) {
-      const redirectTo = (location.state as { from?: string } | null)?.from ?? '/lobby'
+      const redirectTo = (location.state as { from?: string } | null)?.from ?? '/mentor'
       navigate(redirectTo, { replace: true })
       return
     }
@@ -111,9 +92,6 @@ export default function LoginPage() {
           <CardBody>
             {mode === 'select' && (
               <div>
-                <h1 className="mb-1 font-heavy text-xl uppercase tracking-wide text-outline text-text-primary">
-                  Welcome Back
-                </h1>
                 <p className="mb-6 text-sm text-text-secondary">Select your login option to enter the arena.</p>
 
                 <div className="flex flex-col gap-3.5">
@@ -277,7 +255,7 @@ export default function LoginPage() {
                     name="batchNumber"
                     inputMode="numeric"
                     autoComplete="username"
-                    placeholder="6 digits (e.g. 261012)"
+                    placeholder="6 digits (e.g. 271001)"
                     maxLength={6}
                     value={studentBatch}
                     onChange={(e) =>
@@ -292,15 +270,6 @@ export default function LoginPage() {
                   {error && (
                     <div role="alert" className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
                       <p>{error}</p>
-                      {unregisteredBatch && (
-                        <button
-                          type="button"
-                          onClick={() => navigate('/register', { state: { batchNumber: unregisteredBatch } })}
-                          className="mt-2 inline-flex items-center text-xs font-bold text-accent-cyan underline hover:text-accent-cyan/80"
-                        >
-                          Register with batch number {unregisteredBatch} now →
-                        </button>
-                      )}
                     </div>
                   )}
 
@@ -336,12 +305,7 @@ export default function LoginPage() {
           </CardBody>
         </Card>
 
-        <p className="mt-6 text-center text-sm text-text-secondary">
-          New student?{' '}
-          <Link to="/register" className="font-semibold text-accent-cyan hover:underline">
-            Create an account
-          </Link>
-        </p>
+
       </div>
     </div>
   )

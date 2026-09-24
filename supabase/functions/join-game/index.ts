@@ -89,7 +89,19 @@ Deno.serve(async (req: Request) => {
 
   const { error: insertError } = await admin
     .from('participants')
-    .insert({ game_id: game.id, user_id: user.id, status: 'joined' })
+    .insert({
+      game_id: game.id,
+      user_id: user.id,
+      status: 'joined',
+      current_section_index: 0,
+      current_section_name: 'Section A',
+      completed_sections_count: 0,
+      current_section_status: 'in_progress',
+      total_correct: 0,
+      total_wrong: 0,
+      total_unanswered: 60,
+      total_attempted: 0,
+    })
 
   if (insertError) {
     if (insertError.code === '23505') {

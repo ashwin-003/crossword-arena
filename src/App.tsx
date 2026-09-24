@@ -6,13 +6,13 @@ import { Toaster } from '@/components/ui/Toaster'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { FullScreenSpinner } from '@/components/ui/Spinner'
 
+import { getUserRole } from '@/services/authService'
+
 // Route-level code splitting: each page ships in its own chunk so a first
 // visit to /login doesn't pull in the crossword generator, the grid
 // interaction engine, etc.
-const LandingPage = lazy(() => import('@/pages/LandingPage'))
 const LoginPage = lazy(() => import('@/pages/LoginPage'))
-const RegisterPage = lazy(() => import('@/pages/RegisterPage'))
-const PlayerLobbyPage = lazy(() => import('@/pages/PlayerLobbyPage'))
+const MentorDashboardPage = lazy(() => import('@/pages/MentorDashboardPage'))
 const CreateGamePage = lazy(() => import('@/pages/CreateGamePage'))
 const JoinGamePage = lazy(() => import('@/pages/JoinGamePage'))
 const GameLobbyPage = lazy(() => import('@/pages/GameLobbyPage'))
@@ -23,11 +23,20 @@ const GameHistoryDetailPage = lazy(() => import('@/pages/GameHistoryDetailPage')
 const HistoryPage = lazy(() => import('@/pages/HistoryPage'))
 const SpectatorPage = lazy(() => import('@/pages/SpectatorPage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
-
+const GamesHostedPage = lazy(() => import('@/pages/GamesHostedPage'))
+const ParticipantsPage = lazy(() => import('@/pages/ParticipantsPage'))
+const ActiveMatchesPage = lazy(() => import('@/pages/ActiveMatchesPage'))
 function HomeRoute() {
   const { session, initializing } = useAuth()
   if (initializing) return <FullScreenSpinner />
-  return session ? <Navigate to="/lobby" replace /> : <LandingPage />
+  if (!session) return <Navigate to="/login" replace />
+  const role = getUserRole()
+  return role === 'mentor' ? <Navigate to="/mentor" replace /> : <Navigate to="/join-game" replace />
+}
+
+function LobbyRedirect() {
+  const role = getUserRole()
+  return <Navigate to={role === 'mentor' ? '/mentor' : '/join-game'} replace />
 }
 
 export default function App() {
@@ -39,21 +48,48 @@ export default function App() {
           <Routes>
             <Route path="/" element={<HomeRoute />} />
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/register" element={<Navigate to="/login" replace />} />
             <Route path="/crossword/:gameCode/live" element={<SpectatorPage />} />
 
             <Route
-              path="/lobby"
+              path="/mentor"
               element={
-                <ProtectedRoute>
-                  <PlayerLobbyPage />
+                <ProtectedRoute allowedRole="mentor">
+                  <MentorDashboardPage />
                 </ProtectedRoute>
               }
             />
             <Route
+              path="/mentor/games"
+              element={
+                <ProtectedRoute allowedRole="mentor">
+                  <GamesHostedPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/mentor/participants"
+              element={
+                <ProtectedRoute allowedRole="mentor">
+                  <ParticipantsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/mentor/active-matches"
+              element={
+                <ProtectedRoute allowedRole="mentor">
+                  <ActiveMatchesPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/mentor/dashboard" element={<Navigate to="/mentor" replace />} />
+
+            <Route path="/lobby" element={<LobbyRedirect />} />
+            <Route
               path="/create-game"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRole="mentor">
                   <CreateGamePage />
                 </ProtectedRoute>
               }
@@ -61,7 +97,7 @@ export default function App() {
             <Route
               path="/create-game/:draftId"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRole="mentor">
                   <CreateGamePage />
                 </ProtectedRoute>
               }
@@ -69,7 +105,7 @@ export default function App() {
             <Route
               path="/join-game"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRole="student">
                   <JoinGamePage />
                 </ProtectedRoute>
               }
@@ -85,7 +121,7 @@ export default function App() {
             <Route
               path="/game/:gameCode/competition"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRole="student">
                   <CompetitionPage />
                 </ProtectedRoute>
               }
@@ -93,7 +129,7 @@ export default function App() {
             <Route
               path="/game/:gameCode/monitor"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRole="mentor">
                   <GameMonitorPage />
                 </ProtectedRoute>
               }
@@ -109,7 +145,7 @@ export default function App() {
             <Route
               path="/game/:gameCode/history"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRole="mentor">
                   <GameHistoryDetailPage />
                 </ProtectedRoute>
               }
@@ -117,7 +153,7 @@ export default function App() {
             <Route
               path="/history"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRole="mentor">
                   <HistoryPage />
                 </ProtectedRoute>
               }
