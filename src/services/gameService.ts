@@ -471,9 +471,10 @@ export interface ReviewRow {
 }
 
 export async function fetchMyReview(gameId: string): Promise<ReviewRow[]> {
-  const { data, error } = await supabase.rpc('get_my_review', { p_game_id: gameId })
-  if (error) return []
-  return (data as ReviewRow[]) ?? []}
+  const result = await callFunction<ReviewRow[]>('get-review', { gameId })
+  if (!result.ok || !result.data) return []
+  return result.data
+}
 
 export interface HistoryEntry extends ResultRow {
   game: Pick<GameRow, 'id' | 'title' | 'game_code' | 'created_at'>
