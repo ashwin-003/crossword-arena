@@ -9,29 +9,35 @@ export interface FunctionResult<T> {
 
 async function getValidAccessToken(): Promise<string | null> {
   try {
-    // 1. If student session is active, use student session token
-    const studentSession = getStudentSession()
-    if (studentSession?.token) {
-      return studentSession.token
-    }
-
-    // 2. Otherwise use Supabase Auth session token (e.g. mentor)
+    // 1. Prefer Supabase Auth session (Mentor)
     let {
       data: { session },
     } = await supabase.auth.getSession()
 
-    // If session is missing or within 60 seconds of expiration, attempt refresh
     const isExpiredOrExpiring =
-      !session || (session.expires_at && session.expires_at * 1000 < Date.now() + 60000)
+      !session ||
+      (session.expires_at && session.expires_at * 1000 < Date.now() + 60000)
 
     if (isExpiredOrExpiring) {
-      const refreshed = await supabase.auth.refreshSession()
-      if (refreshed.data.session) {
+      const refreshed = await supabase.auth.refreshSession().catch(() => null)
+
+      if (refreshed?.data?.session) {
         session = refreshed.data.session
       }
     }
 
-    return session?.access_token ?? null
+    if (session?.access_token) {
+      return session.access_token
+    }
+
+    // 2. Fall back to student session
+    const studentSession = getStudentSession()
+
+    if (studentSession?.token) {
+      return studentSession.token
+    }
+
+    return null
   } catch (err) {
     console.warn('[callFunction] Error checking auth session:', err)
     return null
