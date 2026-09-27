@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import clsx from 'clsx'
 import { playFanfare } from '@/lib/sound'
-import { Trophy, Home, ListChecks, Medal } from 'lucide-react'
+import { Trophy, Home, ListChecks, Medal, CheckCircle2, Loader2 } from 'lucide-react'
 import { PageShell } from '@/components/layout/PageShell'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -102,16 +102,18 @@ export default function ResultsPage() {
     }
   }, [game, myResult, attempts, isCreator])
 
+  const effectiveGameStatus = liveGame?.status ?? game?.status
+
   const fanfarePlayedRef = useRef(false)
   useEffect(() => {
-    if (myResult && !fanfarePlayedRef.current) {
+    if (myResult && effectiveGameStatus !== 'active' && !fanfarePlayedRef.current) {
       fanfarePlayedRef.current = true
       playFanfare()
     }
-  }, [myResult])
+  }, [myResult, effectiveGameStatus])
 
-  if (game === undefined) return <FullScreenSpinner label="Loading results…" />
-  if (isCreator) return <FullScreenSpinner label="Redirecting host to spectator view…" />
+  if (game === undefined) return <FullScreenSpinner label="Loading results..." />
+  if (isCreator) return <FullScreenSpinner label="Redirecting host to spectator view..." />
   if (!game) {
     return (
       <PageShell className="flex items-center justify-center py-20">
@@ -119,7 +121,37 @@ export default function ResultsPage() {
       </PageShell>
     )
   }
-  if (!myResult) return <FullScreenSpinner label="Calculating your result…" />
+  if (!myResult) return <FullScreenSpinner label="Calculating your result..." />
+
+  if (effectiveGameStatus === 'active') {
+    return (
+      <PageShell className="flex items-center justify-center py-20">
+        <div className="w-full max-w-md animate-fade-in-up text-center flex flex-col items-center">
+          <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-success/10 border-4 border-success/30">
+            <CheckCircle2 size={48} className="text-success" />
+          </div>
+          <h1 className="font-heavy text-4xl uppercase tracking-tight text-text-primary mb-3">
+            Submission Complete
+          </h1>
+          <p className="text-text-secondary text-lg mb-8">
+            Your answers have been saved successfully.
+          </p>
+          
+          <Card className="w-full p-8 border-accent-cyan/30 bg-surface-raised shadow-lg shadow-accent-cyan/5">
+            <div className="flex flex-col items-center gap-4">
+              <Loader2 size={32} className="animate-spin text-accent-cyan" />
+              <p className="font-display text-sm font-semibold uppercase tracking-widest text-accent-cyan">
+                Waiting for other students to complete the competition...
+              </p>
+              <p className="text-sm text-text-muted mt-2">
+                Final results will be available once all students have submitted.
+              </p>
+            </div>
+          </Card>
+        </div>
+      </PageShell>
+    )
+  }
 
   const myRank = myResult.rank ?? 0
   const medal = rankMedal(myRank)
