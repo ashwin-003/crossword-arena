@@ -468,6 +468,7 @@ export interface ReviewRow {
   correct_answer: string
   my_answer: string
   is_correct: boolean | null
+  section_name: string
 }
 
 export async function fetchMyReview(gameId: string): Promise<ReviewRow[]> {

@@ -42,16 +42,22 @@ Deno.serve(async (req: Request) => {
   }
 
   // 2. Fetch all questions for this game
-  const { data: questions, error: qErr } = await admin
+  const { data: rawQuestions, error: qErr } = await admin
     .from('questions')
-    .select('id, number, direction, clue, answer')
+    .select('id, number, direction, clue, answer, game_sections(name, position)')
     .eq('game_id', gameId)
-    .order('number')
-    .order('direction')
 
   if (qErr) {
     return errorResponse('Failed to fetch questions.', 500)
   }
+
+  const questions = (rawQuestions || []).sort((a, b) => {
+    const posA = a.game_sections?.position ?? 0;
+    const posB = b.game_sections?.position ?? 0;
+    if (posA !== posB) return posA - posB;
+    if (a.number !== b.number) return a.number - b.number;
+    return a.direction.localeCompare(b.direction);
+  });
 
   // 3. Fetch all answers for this user in this game
   const { data: answers, error: aErr } = await admin
@@ -70,7 +76,7 @@ Deno.serve(async (req: Request) => {
   }
 
   // 4. Map them to the ReviewRow expected by AnswerReviewModal
-  const reviewRows = (questions || []).map(q => {
+  const reviewRows = questions.map(q => {
     const a = answerMap.get(q.id)
     return {
       question_id: q.id,
@@ -79,7 +85,8 @@ Deno.serve(async (req: Request) => {
       clue: q.clue,
       correct_answer: q.answer,
       my_answer: a?.answer || '',
-      is_correct: a?.is_correct ?? null
+      is_correct: a?.is_correct ?? null,
+      section_name: q.game_sections?.name || 'Unknown Section'
     }
   })
 

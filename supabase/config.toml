@@ -41,3 +41,7 @@ enabled = true
 
 [edge_runtime]
 enabled = true
+
+[functions.get-review]
+verify_jwt = false
+
