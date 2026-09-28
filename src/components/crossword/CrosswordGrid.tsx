@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import clsx from 'clsx'
 import type { GridLayout, ClueDirection } from '@/types/database'
 import type { CellPosition } from '@/types/crossword'
@@ -49,11 +49,11 @@ export const CrosswordGrid = forwardRef<CrosswordGridHandle, CrosswordGridProps>
   const containerRef = useRef<HTMLDivElement>(null)
   const hiddenInputRef = useRef<HTMLInputElement>(null)
   const cellRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
+  const [inputValue, setInputValue] = useState(' ')
 
   function focusInput() {
     if (disabled) return
     if (hiddenInputRef.current) {
-      hiddenInputRef.current.value = ' '
       try {
         hiddenInputRef.current.focus({ preventScroll: true })
       } catch {
@@ -142,24 +142,28 @@ export const CrosswordGrid = forwardRef<CrosswordGridHandle, CrosswordGridProps>
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     if (disabled) return
     const val = e.target.value
-    if (!val) {
+    if (val.length < inputValue.length) {
       onBackspace()
-      e.target.value = ' '
-      return
+    } else {
+      const char = val.slice(-1)
+      if (/^[a-zA-Z]$/.test(char)) {
+        onLetter(selected.row, selected.col, char.toUpperCase())
+      }
     }
-    const char = val.slice(-1)
-    if (/^[a-zA-Z]$/.test(char)) {
-      onLetter(selected.row, selected.col, char.toUpperCase())
-    }
-    e.target.value = ' '
+    setInputValue(val === ' ' ? '  ' : ' ')
   }
 
   function handleInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (disabled) return
+    const { row, col } = selected
+    if (/^[a-zA-Z]$/.test(e.key)) {
+      e.preventDefault()
+      onLetter(row, col, e.key.toUpperCase())
+      return
+    }
     if (e.key === 'Backspace') {
       e.preventDefault()
       onBackspace()
-      if (hiddenInputRef.current) hiddenInputRef.current.value = ' '
     } else if (e.key === 'Enter') {
       e.preventDefault()
       onEnter()
@@ -186,9 +190,9 @@ export const CrosswordGrid = forwardRef<CrosswordGridHandle, CrosswordGridProps>
         spellCheck={false}
         tabIndex={disabled ? -1 : 0}
         aria-label="Crossword mobile typing input"
-        className="absolute top-0 left-0 h-0 w-0 opacity-0 pointer-events-none overflow-hidden"
-        style={{ fontSize: '16px' }}
-        defaultValue=" "
+        className="absolute top-0 opacity-0 pointer-events-none overflow-hidden"
+        style={{ fontSize: '16px', width: '1px', height: '1px', left: '-9999px' }}
+        value={inputValue}
         onChange={handleInputChange}
         onKeyDown={handleInputKeyDown}
       />
@@ -244,7 +248,7 @@ export const CrosswordGrid = forwardRef<CrosswordGridHandle, CrosswordGridProps>
                       focusInput()
                     }}
                     className={clsx(
-                      'relative flex items-center justify-center border border-border-strong font-mono text-lg font-bold uppercase transition-colors duration-100 sm:text-xl',
+                      'relative flex items-center justify-center border border-border-strong font-mono text-lg font-bold uppercase transition-colors duration-100 sm:text-xl cursor-pointer',
                       isSelected
                         ? 'bg-accent-cyan text-black'
                         : inWord
