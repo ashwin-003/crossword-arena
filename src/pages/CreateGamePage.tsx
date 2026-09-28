@@ -129,7 +129,24 @@ export default function CreateGamePage() {
                 timeLimitSeconds: s.timeLimitSeconds ?? 600,
                 acrossClues: across.length > 0 ? across : [emptyClue('across')],
                 downClues: down.length > 0 ? down : [emptyClue('down')],
-                generation: null,
+                generation: s.generatedGrid ? {
+                  ok: true,
+                  crossword: {
+                    rows: s.generatedGrid.rows,
+                    cols: s.generatedGrid.cols,
+                    cellMask: s.generatedGrid.cellMask,
+                    solutionGrid: Array.from({ length: s.generatedGrid.rows }, () => Array(s.generatedGrid!.cols).fill(null)),
+                    words: s.generatedGrid.words.map((w, idx) => ({
+                      localId: `draft-w-${idx}`,
+                      direction: w.direction,
+                      clue: w.clue,
+                      answer: w.answer,
+                      row: w.row,
+                      col: w.col,
+                      number: w.number,
+                    })),
+                  }
+                } : null,
                 generating: false,
                 collapsed: false,
               }
@@ -290,6 +307,19 @@ export default function CreateGamePage() {
           direction: 'down' as const, clue: c.clue.trim(), answer: c.answer.trim(),
         })),
       ],
+      generatedGrid: s.generation?.ok ? {
+        rows: s.generation.crossword.rows,
+        cols: s.generation.crossword.cols,
+        cellMask: s.generation.crossword.cellMask,
+        words: s.generation.crossword.words.map((w) => ({
+          direction: w.direction,
+          clue: w.clue,
+          answer: w.answer,
+          row: w.row,
+          col: w.col,
+          number: w.number,
+        })),
+      } : undefined,
     }))
 
     const saved = await saveDraft({ id: currentDraftId, title: title.trim(), sections: draftSections }, profile.id)
@@ -325,10 +355,38 @@ export default function CreateGamePage() {
     setCreateError(null)
 
     const sectionInputs = sections.map((s) => {
-      const gen = s.generation as { ok: true; crossword: { words: { direction: string; clue: string; answer: string }[] } }
+      const gen = s.generation as {
+        ok: true
+        crossword: {
+          rows: number
+          cols: number
+          cellMask: boolean[][]
+          words: {
+            direction: string
+            clue: string
+            answer: string
+            row: number
+            col: number
+            number: number
+          }[]
+        }
+      }
       return {
         name: s.name,
         timeLimitSeconds: s.timeLimitSeconds,
+        grid: {
+          rows: gen.crossword.rows,
+          cols: gen.crossword.cols,
+          cellMask: gen.crossword.cellMask,
+          words: gen.crossword.words.map((w) => ({
+            direction: w.direction as 'across' | 'down',
+            clue: w.clue,
+            answer: w.answer,
+            row: w.row,
+            col: w.col,
+            number: w.number,
+          })),
+        },
         clues: gen.crossword.words.map((w) => ({
           direction: w.direction as 'across' | 'down',
           clue: w.clue,

@@ -23,11 +23,27 @@ interface ClueInput {
   answer?: string
 }
 
+interface GridWordInput {
+  direction?: 'across' | 'down'
+  clue?: string
+  answer?: string
+  row?: number
+  col?: number
+  number?: number
+}
+
+interface GridInput {
+  rows?: number
+  cols?: number
+  cellMask?: boolean[][]
+  words?: GridWordInput[]
+}
+
 interface SectionInput {
   name?: string
   clues?: ClueInput[]
-  // timeLimitSeconds accepted but ignored (backward compat with older clients)
   timeLimitSeconds?: number
+  grid?: GridInput
 }
 
 interface CreateGameBody {
@@ -82,7 +98,7 @@ Deno.serve(async (req: Request) => {
   }
 
   // Normalize to sections[] regardless of input format
-  type NormalizedSection = { name: string; timeLimitSeconds: number; clues: ClueInput[] }
+  type NormalizedSection = { name: string; timeLimitSeconds: number; clues: ClueInput[]; grid?: GridInput }
   let sections: NormalizedSection[]
 
   if (Array.isArray(body.sections) && body.sections.length > 0) {
@@ -97,6 +113,7 @@ Deno.serve(async (req: Request) => {
           ? Math.round(s.timeLimitSeconds)
           : 600,
       clues: Array.isArray(s.clues) ? s.clues : [],
+      grid: s.grid,
     }))
   } else if (Array.isArray(body.clues) && body.clues.length > 0) {
     // Legacy single-section format
@@ -147,6 +164,34 @@ Deno.serve(async (req: Request) => {
 
   for (let i = 0; i < sections.length; i++) {
     const s = sections[i]
+
+    // If the mentor already previewed and generated a grid, reuse that exact grid directly (no second generation)
+    if (
+      s.grid &&
+      typeof s.grid.rows === 'number' &&
+      typeof s.grid.cols === 'number' &&
+      Array.isArray(s.grid.cellMask) &&
+      Array.isArray(s.grid.words) &&
+      s.grid.words.length > 0
+    ) {
+      generated.push({
+        name: s.name,
+        timeLimitSeconds: s.timeLimitSeconds,
+        rows: s.grid.rows,
+        cols: s.grid.cols,
+        cellMask: s.grid.cellMask,
+        words: s.grid.words.map((w) => ({
+          direction: (w.direction === 'down' ? 'down' : 'across') as 'across' | 'down',
+          clue: (w.clue ?? '').trim(),
+          answer: (w.answer ?? '').toUpperCase().replace(/[^A-Z]/g, ''),
+          row: typeof w.row === 'number' ? w.row : 0,
+          col: typeof w.col === 'number' ? w.col : 0,
+          number: typeof w.number === 'number' ? w.number : 1,
+        })),
+      })
+      continue
+    }
+
     const draftClues: DraftClueInput[] = s.clues.map((c, j) => ({
       localId: `s${i}-${j}`,
       direction: c.direction as 'across' | 'down',

@@ -23,10 +23,25 @@ export interface CreateGameClueInput {
   answer: string
 }
 
+export interface CreateGameGridInput {
+  rows: number
+  cols: number
+  cellMask: boolean[][]
+  words: {
+    direction: 'across' | 'down'
+    clue: string
+    answer: string
+    row: number
+    col: number
+    number: number
+  }[]
+}
+
 export interface CreateGameSectionInput {
   name: string
   timeLimitSeconds: number
   clues: CreateGameClueInput[]
+  grid?: CreateGameGridInput
 }
 
 /** Creates a multi-section game. */
