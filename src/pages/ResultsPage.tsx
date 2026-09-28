@@ -73,7 +73,7 @@ export default function ResultsPage() {
         fetchMyResult(g.id, profile!.id),
         fetchResults(g.id),
         fetchGameSections(g.id),
-        fetchMySectionResults(g.id),
+        fetchMySectionResults(g.id, g.start_time ?? undefined),
       ])
       if (cancelled) return
       setMyResult(mine)

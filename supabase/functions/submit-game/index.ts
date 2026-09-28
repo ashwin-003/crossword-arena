@@ -64,16 +64,20 @@ Deno.serve(async (req) => {
     return errorResponse('You are not a participant of this game.', 403)
   }
 
-  // Idempotent short-circuit: already finalized
+  // Idempotent short-circuit: already finalized in current attempt
   if (participant.status === 'submitted') {
     const { data: existingResult } = await admin
       .from('results')
-      .select('score, completion_time_seconds, solved_count, total_questions, accuracy, rank, auto_submitted')
+      .select('score, completion_time_seconds, solved_count, total_questions, accuracy, rank, auto_submitted, created_at')
       .eq('game_id', gameId)
       .eq('user_id', user.id)
       .maybeSingle()
     if (existingResult) {
-      return jsonResponse({ ok: true, result: existingResult, alreadySubmitted: true })
+      const isFromCurrentRun =
+        !game.start_time || new Date(existingResult.created_at).getTime() >= new Date(game.start_time).getTime()
+      if (isFromCurrentRun) {
+        return jsonResponse({ ok: true, result: existingResult, alreadySubmitted: true })
+      }
     }
   }
 
@@ -179,10 +183,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Aggregate all section_results for this student
+    // Aggregate all section_results for this student from the current attempt
     const { data: allSectionResults } = await admin
       .from('section_results')
-      .select('score, solved_count, total_questions')
+      .select('score, solved_count, total_questions, submitted_at')
       .eq('game_id', gameId)
       .eq('user_id', user.id)
 
@@ -192,6 +196,9 @@ Deno.serve(async (req) => {
     finalCompletionTimeSeconds = matchCompletionTimeSeconds
 
     for (const sr of allSectionResults ?? []) {
+      if (game.start_time && new Date(sr.submitted_at).getTime() < new Date(game.start_time).getTime()) {
+        continue
+      }
       finalScore += sr.score
       finalSolvedCount += sr.solved_count
       finalTotalQuestions += sr.total_questions

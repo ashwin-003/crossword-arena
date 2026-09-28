@@ -84,11 +84,19 @@ Deno.serve(async (req: Request) => {
   // All preceding sections (position < currentSectionIndex) MUST have been submitted in section_results
   const { data: prevSectionResults } = await admin
     .from('section_results')
-    .select('section_id')
+    .select('section_id, submitted_at')
     .eq('game_id', gameId)
     .eq('user_id', user.id)
 
-  const submittedSectionIdSet = new Set(((prevSectionResults as Array<{ section_id: string }>) ?? []).map((r) => r.section_id))
+  const submittedSectionIdSet = new Set(
+    ((prevSectionResults as Array<{ section_id: string; submitted_at: string }>) ?? [])
+      .filter((r) => {
+        if (game.start_time && new Date(r.submitted_at).getTime() < new Date(game.start_time).getTime()) return false
+        if (participant.joined_at && new Date(r.submitted_at).getTime() < new Date(participant.joined_at).getTime()) return false
+        return true
+      })
+      .map((r) => r.section_id)
+  )
 
   for (const s of allSections) {
     if ((s.position as number) < currentSectionIndex) {
@@ -101,7 +109,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // 5. Idempotent short-circuit if this section is already submitted
+  // 5. Idempotent short-circuit if this section is already submitted in the current attempt
   const { data: existingResult } = await admin
     .from('section_results')
     .select('*')
@@ -109,7 +117,12 @@ Deno.serve(async (req: Request) => {
     .eq('user_id', user.id)
     .maybeSingle()
 
-  if (existingResult) {
+  const isCurrentAttempt =
+    existingResult &&
+    (!game.start_time || new Date(existingResult.submitted_at).getTime() >= new Date(game.start_time).getTime()) &&
+    (!participant.joined_at || new Date(existingResult.submitted_at).getTime() >= new Date(participant.joined_at).getTime())
+
+  if (existingResult && isCurrentAttempt) {
     return jsonResponse({
       ok: true,
       alreadySubmitted: true,
@@ -215,24 +228,30 @@ Deno.serve(async (req: Request) => {
     return errorResponse('Unable to save section result.', 500, resultError.message)
   }
 
-  // 10. Compute aggregated progress across all completed sections
+  // 10. Compute aggregated progress across all completed sections for current attempt
   const { data: allUserSectionResults } = await admin
     .from('section_results')
-    .select('section_id, score, solved_count, total_questions, completion_time_seconds')
+    .select('section_id, score, solved_count, total_questions, completion_time_seconds, submitted_at')
     .eq('game_id', gameId)
     .eq('user_id', user.id)
+
+  const currentAttemptSectionResults = (allUserSectionResults ?? []).filter((sr) => {
+    if (game.start_time && new Date(sr.submitted_at).getTime() < new Date(game.start_time).getTime()) return false
+    if (participant.joined_at && new Date(sr.submitted_at).getTime() < new Date(participant.joined_at).getTime()) return false
+    return true
+  })
 
   let cumulativeScore = 0
   let cumulativeSolved = 0
   let cumulativeTotalQuestions = 0
 
-  for (const sr of allUserSectionResults ?? []) {
+  for (const sr of currentAttemptSectionResults) {
     cumulativeScore += sr.score as number
     cumulativeSolved += sr.solved_count as number
     cumulativeTotalQuestions += sr.total_questions as number
   }
 
-  const completedCount = allUserSectionResults?.length ?? 0
+  const completedCount = currentAttemptSectionResults.length
   const isFinalSection = currentSectionIndex === allSections.length - 1 || completedCount >= allSections.length
 
   const nextSection = allSections[currentSectionIndex + 1] ?? null

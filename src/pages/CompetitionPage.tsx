@@ -174,7 +174,7 @@ export default function CompetitionPage() {
       }
     })()
     return () => { cancelled = true }
-  }, [gameCode])
+  }, [gameCode, profile?.id])
 
   const { game } = useRealtimeGame(gameId)
   const effectiveGame = game ?? initialGame ?? null
