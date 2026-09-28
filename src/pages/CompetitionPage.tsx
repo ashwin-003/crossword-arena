@@ -120,10 +120,17 @@ export default function CompetitionPage() {
       if (!game) return
       setGameId(game.id)
 
+      let joinedAt: string | undefined
+      if (profile?.id) {
+        const myParticipant = await fetchMyParticipant(game.id, profile.id)
+        joinedAt = myParticipant?.joined_at
+      }
+      if (cancelled) return
+
       const [secs, qs, mySecResults] = await Promise.all([
         fetchGameSections(game.id),
         fetchQuestionsPublic(game.id),
-        fetchMySectionResults(game.id),
+        fetchMySectionResults(game.id, joinedAt),
       ])
       if (cancelled) return
       setSections(secs)

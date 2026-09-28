@@ -54,19 +54,19 @@ Deno.serve(async (req: Request) => {
 
   // Wipe all prior play data for this match.
   const { error: answersError } = await admin.from('answers').delete().eq('game_id', gameId)
-  if (answersError) {
-    return errorResponse('Unable to clear answers.', 500, answersError.message)
-  }
+  if (answersError) return errorResponse('Unable to clear answers.', 500, answersError.message)
+
+  const { error: sectionResultsError } = await admin.from('section_results').delete().eq('game_id', gameId)
+  if (sectionResultsError) return errorResponse('Unable to clear section results.', 500, sectionResultsError.message)
+
+  const { error: sectionTimersError } = await admin.from('section_timers').delete().eq('game_id', gameId)
+  if (sectionTimersError) return errorResponse('Unable to clear section timers.', 500, sectionTimersError.message)
 
   const { error: resultsError } = await admin.from('results').delete().eq('game_id', gameId)
-  if (resultsError) {
-    return errorResponse('Unable to clear results.', 500, resultsError.message)
-  }
+  if (resultsError) return errorResponse('Unable to clear results.', 500, resultsError.message)
 
   const { error: participantsError } = await admin.from('participants').delete().eq('game_id', gameId)
-  if (participantsError) {
-    return errorResponse('Unable to clear participants.', 500, participantsError.message)
-  }
+  if (participantsError) return errorResponse('Unable to clear participants.', 500, participantsError.message)
 
   // Reset the game row to 'waiting'.
   const { error: updateError } = await admin

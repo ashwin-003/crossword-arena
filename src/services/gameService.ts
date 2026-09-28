@@ -118,11 +118,17 @@ export async function fetchMySectionTimers(gameId: string): Promise<SectionTimer
 }
 
 /** Fetches the current student's section results for a game. */
-export async function fetchMySectionResults(gameId: string): Promise<SectionResultRow[]> {
-  const { data } = await supabase
+export async function fetchMySectionResults(gameId: string, joinedAt?: string): Promise<SectionResultRow[]> {
+  let query = supabase
     .from('section_results')
     .select('*')
     .eq('game_id', gameId)
+    
+  if (joinedAt) {
+    query = query.gte('submitted_at', joinedAt)
+  }
+  
+  const { data } = await query
   return (data as SectionResultRow[]) ?? []
 }
 

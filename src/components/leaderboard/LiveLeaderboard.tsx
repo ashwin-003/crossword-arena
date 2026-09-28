@@ -16,7 +16,14 @@ export function LiveLeaderboard({ entries, currentUserId }: { entries: Leaderboa
   const [showFull, setShowFull] = useState(false)
 
   const ranked = useMemo(
-    () => entries.map((e, i) => ({ ...e, rank: i + 1 })),
+    () => {
+      const sorted = [...entries].sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score
+        if (b.solvedCount !== a.solvedCount) return b.solvedCount - a.solvedCount
+        return a.name.localeCompare(b.name)
+      })
+      return sorted.map((e, i) => ({ ...e, rank: i + 1 }))
+    },
     [entries]
   )
   const top5 = ranked.slice(0, 5)
