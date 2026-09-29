@@ -1,20 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Send, Clock, ChevronRight, CheckCircle2 } from 'lucide-react'
+import { Send, Clock, ChevronRight, CheckCircle2, ShieldAlert } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import { playAlert, playTick } from '@/lib/sound'
+import { playAlert } from '@/lib/sound'
 import { FullScreenSpinner } from '@/components/ui/Spinner'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { MatchStartCountdown } from '@/components/game/MatchStartCountdown'
-import { FullscreenInterruptedOverlay } from '@/components/game/FullscreenInterruptedOverlay'
+import { AntiMalpracticeModal } from '@/components/game/AntiMalpracticeModal'
 import { SectionTabs } from '@/components/game/SectionTabs'
 import { CrosswordGrid, type CrosswordGridHandle } from '@/components/crossword/CrosswordGrid'
 import { CluesPanel } from '@/components/crossword/CluesPanel'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { useFullscreen } from '@/hooks/useFullscreen'
-import { useCompetitionMonitor } from '@/hooks/useCompetitionMonitor'
+import { useAntiMalpractice } from '@/hooks/useAntiMalpractice'
 import { useRealtimeGame } from '@/hooks/useRealtimeGame'
 import { useGameParticipants } from '@/hooks/useGameParticipants'
 import { useCrosswordPlay } from '@/hooks/useCrosswordPlay'
@@ -35,7 +35,6 @@ import type { GameRow, QuestionPublicRow, GameSectionRow } from '@/types/databas
 import type { ClueEntry } from '@/types/crossword'
 
 const MAX_INTERRUPTIONS = 3
-const INTERRUPTION_GRACE_SECONDS = 30
 
 export default function CompetitionPage() {
   const { gameCode } = useParams<{ gameCode: string }>()
@@ -63,7 +62,6 @@ export default function CompetitionPage() {
 
   // ── Game flow & submission state ──────────────────────────────────────────
   const [interruptionCount, setInterruptionCount] = useState(0)
-  const [graceSecondsLeft, setGraceSecondsLeft] = useState(INTERRUPTION_GRACE_SECONDS)
   const [submitSectionModalOpen, setSubmitSectionModalOpen] = useState(false)
   const [submitGameModalOpen, setSubmitGameModalOpen] = useState(false)
   const [submittingSection, setSubmittingSection] = useState(false)
@@ -267,16 +265,18 @@ export default function CompetitionPage() {
       await submitSection(gId, activeSectionId, isAuto)
     }
 
-    const result = await submitGame(gId)
+    const result = await submitGame(gId, isAuto)
     setSubmittingGame(false)
     setSubmitGameModalOpen(false)
 
     if (result.ok) {
       setHasSubmitted(true)
       showToastRef.current({
-        variant: 'success',
-        title: 'Match Submitted!',
-        description: 'Your answers were submitted successfully.',
+        variant: isAuto ? 'warning' : 'success',
+        title: isAuto ? 'Test Auto-Submitted' : 'Match Submitted!',
+        description: isAuto
+          ? 'Your test was automatically submitted due to screen-exit violations.'
+          : 'Your answers were submitted successfully.',
       })
       navigate(gameCode ? `/game/${gameCode}/results` : '/join-game', {
         replace: true,
@@ -363,7 +363,12 @@ export default function CompetitionPage() {
     userId: profile?.id,
     questions: activeQuestions,
     gridLayout,
-    active: isActive && !hasSubmitted && countdownComplete && !isCurrentSectionSubmitted,
+    active:
+      isActive &&
+      !hasSubmitted &&
+      countdownComplete &&
+      !isCurrentSectionSubmitted &&
+      interruptionCount < MAX_INTERRUPTIONS,
   })
 
   const handleSelectClue = useCallback((clue: ClueEntry) => {
@@ -371,15 +376,44 @@ export default function CompetitionPage() {
     gridRef.current?.focus()
   }, [play])
 
-  // ── Interruption / fullscreen enforcement ──────────────────────────────────
-  useCompetitionMonitor({
+  const autoSubmitTriggeredRef = useRef(false)
+
+  const handleAutoSubmit = useCallback(() => {
+    if (hasSubmitted || autoSubmitTriggeredRef.current) return
+    autoSubmitTriggeredRef.current = true
+    playAlert()
+    showToastRef.current({
+      variant: 'danger',
+      title: 'Attempt Limit Reached',
+      description: 'Maximum violations (3 / 3) reached. Submitting test automatically...',
+    })
+    doSubmitGameRef.current(true)
+  }, [hasSubmitted])
+
+  // ── Anti-Malpractice 3-Violation Enforcement ────────────────────────────────
+  const {
+    violationCount,
+    modalOpen: violationModalOpen,
+    isDuplicateTab,
+    acknowledgeWarning,
+  } = useAntiMalpractice({
     gameId,
     userId: profile?.id,
-    active: isActive && !hasSubmitted && countdownComplete,
-    isFullscreen,
-    onInterruption: setInterruptionCount,
-    onRestored: () => {},
+    active: Boolean(isActive && !hasSubmitted && countdownComplete),
+    initialCount: interruptionCount,
+    onViolation: (count) => {
+      setInterruptionCount(count)
+      playAlert()
+    },
+    onAutoSubmit: handleAutoSubmit,
   })
+
+  const handleAcknowledgeWarning = useCallback(() => {
+    acknowledgeWarning()
+    if (fullscreenSupported && !isFullscreen) {
+      enter().catch(() => {})
+    }
+  }, [acknowledgeWarning, fullscreenSupported, isFullscreen, enter])
 
   useEffect(() => {
     if (!gameId || !isActive || hasSubmitted || !countdownComplete) return
@@ -410,58 +444,15 @@ export default function CompetitionPage() {
         navigate(`/game/${gameCode}/results`, { replace: true })
         return
       }
-      if (participant) setInterruptionCount(participant.interruption_count)
+      if (participant) {
+        setInterruptionCount(participant.interruption_count)
+        if (participant.interruption_count >= MAX_INTERRUPTIONS) {
+          handleAutoSubmit()
+        }
+      }
     })
     return () => { cancelled = true }
-  }, [gameId, profile?.id, effectiveGame, gameCode, navigate])
-
-  const autoSubmitTriggeredRef = useRef(false)
-
-  useEffect(() => {
-    if (hasSubmitted || autoSubmitTriggeredRef.current) return
-    if (interruptionCount < MAX_INTERRUPTIONS) return
-    autoSubmitTriggeredRef.current = true
-    showToastRef.current({
-      variant: 'warning',
-      title: 'Attempt limit reached',
-      description: 'Your game has been submitted automatically.',
-    })
-    doSubmitGameRef.current()
-  }, [interruptionCount, hasSubmitted])
-
-  useEffect(() => {
-    const isInterrupted = fullscreenSupported && hasEnteredOnce && !isFullscreen
-    if (!isInterrupted || hasSubmitted) {
-      setGraceSecondsLeft(INTERRUPTION_GRACE_SECONDS)
-      return
-    }
-    playAlert()
-    setGraceSecondsLeft(INTERRUPTION_GRACE_SECONDS)
-    const deadline = Date.now() + INTERRUPTION_GRACE_SECONDS * 1000
-    let lastTickSecond = -1
-    const interval = window.setInterval(() => {
-      const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
-      setGraceSecondsLeft(remaining)
-      if (remaining <= 10 && remaining !== lastTickSecond) {
-        lastTickSecond = remaining
-        playTick()
-      }
-    }, 250)
-    const timeout = window.setTimeout(() => {
-      if (autoSubmitTriggeredRef.current) return
-      autoSubmitTriggeredRef.current = true
-      showToastRef.current({
-        variant: 'danger',
-        title: "Time's up",
-        description: "You didn't return to fullscreen in time — your game has been submitted automatically.",
-      })
-      doSubmitGameRef.current()
-    }, INTERRUPTION_GRACE_SECONDS * 1000)
-    return () => {
-      window.clearInterval(interval)
-      window.clearTimeout(timeout)
-    }
-  }, [isFullscreen, hasEnteredOnce, fullscreenSupported, hasSubmitted])
+  }, [gameId, profile?.id, effectiveGame, gameCode, navigate, handleAutoSubmit])
 
   useEffect(() => {
     if (effectiveGame?.status === 'ended' && gameCode) {
@@ -528,24 +519,23 @@ export default function CompetitionPage() {
     )
   }
 
-  const interrupted = fullscreenSupported && hasEnteredOnce && countdownComplete && !isFullscreen
-
   const currentWordCells = new Set(
     play.currentClue ? wordCells(play.currentClue).map((c) => cellKey(c.row, c.col)) : []
   )
 
+  const isSessionLocked = hasSubmitted || isDuplicateTab || violationCount >= MAX_INTERRUPTIONS
+
   return (
     <div className="min-h-screen bg-bg bg-grid-pattern pb-16">
       {countdownActive && <MatchStartCountdown onDone={handleCountdownDone} />}
-      {interrupted && (
-        <FullscreenInterruptedOverlay
-          interruptionCount={interruptionCount}
-          maxInterruptions={MAX_INTERRUPTIONS}
-          graceSecondsLeft={graceSecondsLeft}
-          locked={interruptionCount >= MAX_INTERRUPTIONS}
-          onReturn={enter}
-        />
-      )}
+      <AntiMalpracticeModal
+        violationCount={violationCount}
+        maxViolations={MAX_INTERRUPTIONS}
+        isOpen={violationModalOpen}
+        isSubmitting={submittingGame}
+        isDuplicateTab={isDuplicateTab}
+        onAcknowledge={handleAcknowledgeWarning}
+      />
 
       {/* Top Game Bar */}
       <header className="sticky top-0 z-30 border-b border-border bg-bg/90 px-4 py-3 backdrop-blur-md sm:px-6">
@@ -563,6 +553,23 @@ export default function CompetitionPage() {
               )}
             </div>
             <div className="flex items-center gap-3 sm:gap-4">
+              {/* Anti-Malpractice Violation Badge */}
+              <div
+                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 font-mono text-xs font-bold sm:px-3 sm:py-1.5 sm:text-sm ${
+                  violationCount === 0
+                    ? 'border-border bg-surface-raised/70 text-text-muted'
+                    : violationCount === 1
+                      ? 'border-accent-cyan/60 bg-accent-cyan/10 text-accent-cyan'
+                      : violationCount === 2
+                        ? 'border-warning/60 bg-warning/10 text-warning animate-pulse'
+                        : 'border-danger/60 bg-danger/10 text-danger animate-pulse'
+                }`}
+                title="Anti-Malpractice Violations (Max 3 allowed)"
+              >
+                <ShieldAlert size={14} className={violationCount > 1 ? 'text-warning' : ''} />
+                <span>Violations: {violationCount} / {MAX_INTERRUPTIONS}</span>
+              </div>
+
               {/* Overall 60-minute Match Timer */}
               <div
                 className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 font-mono text-sm font-bold sm:px-3 sm:py-1.5 sm:text-base ${
@@ -598,7 +605,7 @@ export default function CompetitionPage() {
               submittedSectionIds={submittedSectionIds}
               unlockedSectionIds={unlockedSectionIds}
               onSelect={handleSelectSection}
-              disabled={hasSubmitted || interrupted}
+              disabled={isSessionLocked}
             />
           )}
         </div>
@@ -658,7 +665,7 @@ export default function CompetitionPage() {
               size="sm"
               variant="primary"
               onClick={() => setSubmitSectionModalOpen(true)}
-              disabled={hasSubmitted || interrupted}
+              disabled={isSessionLocked}
             >
               {isLastSection ? 'Submit & Finalize Match' : 'Submit Section'}
               <ChevronRight size={15} />
@@ -685,7 +692,7 @@ export default function CompetitionPage() {
               onArrow={play.moveSelection}
               onTab={(shift) => play.jumpRelative(shift ? -1 : 1)}
               onEnter={() => play.jumpRelative(1)}
-              disabled={hasSubmitted || interrupted || !countdownComplete || isCurrentSectionSubmitted}
+              disabled={isSessionLocked || !countdownComplete || isCurrentSectionSubmitted}
             />
           </div>
         )}

@@ -294,7 +294,7 @@ export async function fetchMyCreatedGames(userId: string): Promise<CreatedGameEn
   }))
 }
 
-export async function submitGame(gameId: string) {
+export async function submitGame(gameId: string, autoSubmitted = false) {
   return callFunction<{
     ok: true
     result: {
@@ -306,7 +306,7 @@ export async function submitGame(gameId: string) {
       rank: number | null
       auto_submitted: boolean
     }
-  }>('submit-game', { gameId })
+  }>('submit-game', { gameId, autoSubmitted })
 }
 
 export async function nudgeGameStateIfExpired(gameId: string) {
@@ -545,8 +545,20 @@ export async function fetchSpectatorSnapshot(gameCode: string): Promise<Spectato
   return data as SpectatorSnapshot | null
 }
 
+export interface RecordViolationResult {
+  ok: boolean
+  interruptionCount: number
+  shouldSubmit: boolean
+  isSubmitted?: boolean
+}
+
+export async function recordViolation(gameId: string, reason = 'screen_left') {
+  return callFunction<RecordViolationResult>('record-violation', { gameId, reason })
+}
+
 export async function recordInterruption(gameId: string) {
-  return supabase.rpc('record_interruption', { p_game_id: gameId })
+  const res = await recordViolation(gameId)
+  return { data: res.data?.interruptionCount ?? 0, error: res.error }
 }
 
 export async function disqualifyParticipant(gameId: string, targetUserId: string) {
