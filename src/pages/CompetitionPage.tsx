@@ -130,7 +130,7 @@ export default function CompetitionPage() {
       const [secs, qs, mySecResults] = await Promise.all([
         fetchGameSections(game.id),
         fetchQuestionsPublic(game.id),
-        fetchMySectionResults(game.id, joinedAt),
+        fetchMySectionResults(game.id, joinedAt, profile?.id),
       ])
       if (cancelled) return
       setSections(secs)
@@ -278,7 +278,10 @@ export default function CompetitionPage() {
         title: 'Match Submitted!',
         description: 'Your answers were submitted successfully.',
       })
-      navigate(gameCode ? `/game/${gameCode}/results` : '/join-game', { replace: true })
+      navigate(gameCode ? `/game/${gameCode}/results` : '/join-game', {
+        replace: true,
+        state: { result: result.data?.result },
+      })
     } else {
       showToastRef.current({ variant: 'danger', title: 'Unable to submit', description: result.error })
     }

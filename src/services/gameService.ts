@@ -133,12 +133,15 @@ export async function fetchMySectionTimers(gameId: string): Promise<SectionTimer
 }
 
 /** Fetches the current student's section results for a game. */
-export async function fetchMySectionResults(gameId: string, joinedAt?: string): Promise<SectionResultRow[]> {
+export async function fetchMySectionResults(gameId: string, joinedAt?: string, userId?: string): Promise<SectionResultRow[]> {
   let query = supabase
     .from('section_results')
     .select('*')
     .eq('game_id', gameId)
     
+  if (userId) {
+    query = query.eq('user_id', userId)
+  }
   if (joinedAt) {
     query = query.gte('submitted_at', joinedAt)
   }
@@ -458,7 +461,12 @@ export async function fetchQuestionAnalytics(gameId: string): Promise<QuestionAn
 
 export async function fetchResults(gameId: string): Promise<ResultWithUser[]> {
   const [resultsRes, participantsRes] = await Promise.all([
-    supabase.from('results').select('*').eq('game_id', gameId).order('rank', { ascending: true }),
+    supabase
+      .from('results')
+      .select('*')
+      .eq('game_id', gameId)
+      .order('score', { ascending: false })
+      .order('completion_time_seconds', { ascending: true }),
     supabase.from('participants_public').select('user_id, display_name, display_class').eq('game_id', gameId),
   ])
 
@@ -470,9 +478,29 @@ export async function fetchResults(gameId: string): Promise<ResultWithUser[]> {
     userMap.set(p.user_id, { id: p.user_id, name: p.display_name ?? 'Student', class: p.display_class ?? '' })
   }
 
-  return results.map((r: any) => ({
+  const mapped = results.map((r: any) => ({
     ...r,
     user: userMap.get(r.user_id) ?? { id: r.user_id, name: 'Student', class: '' },
+  }))
+
+  // Authoritative ranking sort rule matching Mentor ranking:
+  // 1. PRIMARY: Correct Answer Score DESC (higher score ranks higher)
+  // 2. SECONDARY TIE-BREAKER: Completion Time ASC (faster time ranks higher)
+  // 3. Name tie-breaker (alphabetical)
+  mapped.sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score
+    }
+    if (a.completion_time_seconds !== b.completion_time_seconds) {
+      return a.completion_time_seconds - b.completion_time_seconds
+    }
+    return (a.user.name || '').localeCompare(b.user.name || '')
+  })
+
+  // Assign deterministic, sequential ranks matching the Mentor ranking
+  return mapped.map((r, idx) => ({
+    ...r,
+    rank: idx + 1,
   }))
 }
 
