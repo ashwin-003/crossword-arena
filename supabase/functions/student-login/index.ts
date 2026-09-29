@@ -1,26 +1,21 @@
 // POST /student-login
-// { batchNumber: string }
+// { batchNumber: string, clientToken?: string }
 //
-// Securely verifies a student's batch number against public.students.
-// Students do NOT have Supabase Auth accounts, passwords, or emails.
-// The frontend never enumerates or queries public.students directly.
+// Securely verifies a student's batch number and atomically claims an active session.
+// Enforces a strict maximum of ONE active login per batch number.
 //
-// On success:
-// 1. Validates the 6-digit numeric batch number.
-// 2. Checks existence in public.students table via service-role client.
-// 3. UPSERTs a student session on batch_number (unique constraint ensures
-//    one row per student). This guarantees the student always gets the SAME
-//    session.id, which prevents duplicate participant rows in games.
-// 4. Returns: { ok: true, session: { token, studentId, batchNumber, name } }
+// If another user is already logged in with this batch number:
+// Returns HTTP 409: "This batch number is already logged in. Please check your batch number and try again."
 //
-// On failure:
-// Returns { ok: false, error: 'Invalid batch number' } with HTTP 401.
+// If the same user reconnects/refreshes with their existing token:
+// Reconnection succeeds and refreshes the session without creating a duplicate.
 
 import { handleOptions, jsonResponse, errorResponse } from '../_shared/cors.ts'
 import { getAdminClient } from '../_shared/supabaseAdmin.ts'
 
 interface StudentLoginBody {
   batchNumber?: string
+  clientToken?: string
 }
 
 declare const Deno: {
@@ -49,6 +44,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const batchNumber = (body.batchNumber ?? '').trim()
+  const clientToken = (body.clientToken ?? '').trim() || null
 
   // Input validation: Must contain exactly 6 digits
   if (!/^\d{6}$/.test(batchNumber)) {
@@ -57,59 +53,42 @@ Deno.serve(async (req: Request) => {
 
   const admin = getAdminClient()
 
-  // Securely verify against public.students
-  const { data: student, error: studentError } = await admin
-    .from('students')
-    .select('batch_number')
-    .eq('batch_number', batchNumber)
-    .maybeSingle()
+  // Atomically claim the session using database-level row locking.
+  // This guarantees that race conditions (two simultaneous logins) result in
+  // exactly one successful login and one rejection.
+  const token = generateSessionToken()
 
-  if (studentError) {
-    console.error('Database error checking students:', studentError.message)
+  const { data: claimResult, error: claimError } = await admin.rpc('claim_student_session', {
+    p_batch_number: batchNumber,
+    p_token: token,
+    p_client_token: clientToken,
+    p_timeout_seconds: 1800, // 30 minutes of inactivity before auto-expiry
+  })
+
+  if (claimError) {
+    console.error('Failed to claim student session:', claimError.message)
     return errorResponse('Unable to verify batch number right now.', 500)
   }
 
-  if (!student) {
-    return errorResponse('Invalid batch number', 401)
+  if (!claimResult || !claimResult.ok) {
+    if (claimResult?.error_code === 'ALREADY_LOGGED_IN') {
+      return errorResponse(
+        claimResult.message || 'This batch number is already logged in. Please check your batch number and try again.',
+        409
+      )
+    }
+    return errorResponse(claimResult?.message || 'Invalid batch number', 401)
   }
 
-  // Batch number is valid.
-  // UPSERT the session on the unique batch_number constraint.
-  // This ensures each student always has EXACTLY ONE session row with
-  // a stable `id` (UUID). That stable id becomes `user_id` in participants,
-  // preventing duplicate participant rows when a student logs in multiple times.
-  const token = generateSessionToken()
-  const now = new Date().toISOString()
-
-  const { data: sessionRow, error: sessionError } = await admin
-    .from('student_sessions')
-    .upsert(
-      {
-        batch_number: batchNumber,
-        token,
-        created_at: now,
-        last_seen_at: now,
-      },
-      {
-        onConflict: 'batch_number',
-        ignoreDuplicates: false, // update the token and last_seen_at on conflict
-      }
-    )
-    .select('id, batch_number')
-    .single()
-
-  if (sessionError || !sessionRow) {
-    console.error('Failed to upsert student session:', sessionError?.message)
-    return errorResponse('Unable to establish student session.', 500)
-  }
+  const activeToken = claimResult.token || token
 
   return jsonResponse({
     ok: true,
     session: {
-      token,
-      studentId: sessionRow.id,
-      batchNumber: sessionRow.batch_number,
-      name: `Student ${sessionRow.batch_number}`,
+      token: activeToken,
+      studentId: claimResult.student_id,
+      batchNumber: claimResult.batch_number,
+      name: `Student ${claimResult.batch_number}`,
     },
   })
 })

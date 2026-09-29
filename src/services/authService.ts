@@ -70,13 +70,16 @@ export async function loginPlayer(batchNumber: string): Promise<{ ok: true; sess
     return { ok: false, error: { message: 'Invalid batch number' } }
   }
 
+  const existingSession = getStudentSession()
+  const clientToken = existingSession?.batchNumber === trimmed ? existingSession.token : undefined
+
   try {
     const { data, error } = await supabase.functions.invoke<{
       ok: boolean
       session?: StudentSession
       error?: { message: string }
     }>('student-login', {
-      body: { batchNumber: trimmed },
+      body: { batchNumber: trimmed, clientToken },
     })
 
     if (error) {
@@ -86,6 +89,7 @@ export async function loginPlayer(batchNumber: string): Promise<{ ok: true; sess
         try {
           const body = await context.clone().json()
           if (body?.error?.message) message = body.error.message
+          else if (body?.message) message = body.message
         } catch {
           // ignore
         }
@@ -177,6 +181,33 @@ export async function reauthenticateSilently(): Promise<boolean> {
 }
 
 export async function logoutPlayer(): Promise<void> {
+  const studentSession = getStudentSession()
+  const lastBatch = studentSession?.batchNumber || getLastBatchNumber()
+
+  if (studentSession?.token || lastBatch) {
+    // 1. Invalidate session via student-logout Edge Function
+    try {
+      await supabase.functions.invoke('student-logout', {
+        body: {
+          token: studentSession?.token ?? null,
+          batchNumber: lastBatch ?? null,
+        },
+      })
+    } catch {
+      // ignore
+    }
+
+    // 2. Direct RPC release guarantee
+    try {
+      await supabase.rpc('release_student_session', {
+        p_token: studentSession?.token ?? null,
+        p_batch_number: lastBatch ?? null,
+      })
+    } catch {
+      // ignore
+    }
+  }
+
   try {
     setStudentSession(null)
     localStorage.removeItem('ca_last_batch_number')

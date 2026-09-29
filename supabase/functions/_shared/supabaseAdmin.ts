@@ -53,11 +53,15 @@ export async function requireUser(req: Request): Promise<{ user: AuthUser | null
       try {
         const { data: sessionRow, error: sessionErr } = await admin
           .from('student_sessions')
-          .select('id, batch_number')
+          .select('id, batch_number, is_active')
           .eq('token', token)
           .maybeSingle()
 
         if (!sessionErr && sessionRow) {
+          if (sessionRow.is_active === false) {
+            return { user: null, caller }
+          }
+
           // Update last_seen_at asynchronously
           admin
             .from('student_sessions')
